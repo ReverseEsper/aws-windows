@@ -31,6 +31,9 @@ class GetParams:
     role_arn = ''
     verbose = 0
 
+    assume_profile = ''
+    assume_role = ''
+
     epilog = """
     Environmental Variables : 
 
@@ -101,6 +104,8 @@ class GetParams:
         parser.add_argument("--profile", help="Profile name. if none 'default' will be picked", default="default")
         parser.add_argument("--auth-file", help="File with proper credentials")
         parser.add_argument("--role-arn", help="ARN role to assume")
+        parser.add_argument("--assume-role", help="After getting login, assumes new role")
+        parser.add_argument("--assume-profile", help="Profile for assumed role")
         parser.add_argument("-v","--verbose", help="Increase output verbosity",action="count", default=0)
         # Notice Lack of Password. It is intentional, as I don't see any reason to put password in open file
         args = parser.parse_args()
@@ -157,6 +162,14 @@ class GetParams:
                     self.provider_id = value
                 elif key == 'role_arn':
                     self.role_arn = value
+                elif key == 'assume_role':
+                    self.assume_role = value
+                elif key == 'assume_profile':
+                    if self.assume_role:
+                        self.assume_profile = value
+                    else:
+                        print ("[Error] Assume_Profile provided, yet no Assume_Role found")
+                        sys.exit(1)
 
         #Assert that critical variables are present
         if not self.username :
@@ -230,15 +243,29 @@ class ADFSAuth():
         param_role_arn = self.parameters.role_arn
         soup = BeautifulSoup(base64.b64decode(SAMLResponse),features='lxml')
         roles_html = soup.find("attribute",attrs={'name':"https://aws.amazon.com/SAML/Attributes/Role"})
+        roles = []
         for role in roles_html.find_all('attributevalue'):
             role_pair = role.text.split(',')
             principial_arn,role_arn = role_pair[0], role_pair[1]
-            print ("Role found: {}".format(role_arn))
+            roles.append(role_pair)
             if role_arn == param_role_arn:
-                print ("Role fits. Picking it ")
+                print ("Role found.")
                 return principial_arn, role_arn
-        print("[Warning] Role not assigned. Using last one")
-        return principial_arn, role_arn
+        if len(roles) > 1 :
+            print ("Multiple roles found:")
+            i=0
+            for role in roles:
+                print ("{} Role: {}".format(i,role[1]))
+                i += 1
+            role_nr = int(input("Choose number of role: "))
+            # TODO: Proof against wrong numbers
+            return roles[role_nr][0], roles[role_nr][1]
+        elif len(roles) == 1:
+            return roles[0][0], roles[0][1]
+        else:
+            print ("[Error] No Role found") 
+            sys.exit(1)
+
 
     def create_temporary_credentials(self):
         # TODO: Implement testing if login suceeded
@@ -283,9 +310,38 @@ class ADFSAuth():
             os.makedirs(config_folder)
         with open(filename, 'w') as configfile:
             config.write(configfile)
+    
+    def assume_role(self):
+        session = boto3.Session(profile_name=self.parameters.profile)
+        sts_client = session.client('sts')
+        assumedRoleObject = sts_client.assume_role(
+            RoleArn=self.parameters.assume_role,
+            RoleSessionName=self.parameters.assume_profile
+        )
+        credentials = assumedRoleObject['Credentials']
+        
+        home =  os.path.expanduser("~")
+        filename = home + '/.aws/credentials'
+        config = configparser.ConfigParser()
+        config.read(filename)
+        config[self.parameters.assume_profile]= {
+            'aws_access_key_id' : credentials['AccessKeyId'],
+            'aws_secret_access_key' : credentials['SecretAccessKey'],
+            'aws_session_token' : credentials['SessionToken']
+        }
+        config_folder = home+'/.aws'
+        if not os.path.exists(config_folder):
+            os.makedirs(config_folder)
+        with open(filename, 'w') as configfile:
+            config.write(configfile)
+
+
+
 
 parameters = GetParams()
 authentication = ADFSAuth(parameters)
+if parameters.assume_profile:
+    authentication.assume_role()
 
 
 
