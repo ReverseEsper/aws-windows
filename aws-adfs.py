@@ -136,6 +136,13 @@ class GetParams:
                     self.provider_id = value
                 elif key == 'role-arn':
                     self.role_arn = value
+                elif key == 'assume-role':
+                    self.assume_role = value
+                elif key == 'assume-profile':
+                    self.assume_profile = value
+        if self.assume_profile and not self.assume_role:
+            print ("[Error] assume-profile provided, yet no Assume_Role found")
+            sys.exit(1)
 
 
 
@@ -165,11 +172,13 @@ class GetParams:
                 elif key == 'assume_role':
                     self.assume_role = value
                 elif key == 'assume_profile':
-                    if self.assume_role:
-                        self.assume_profile = value
-                    else:
-                        print ("[Error] Assume_Profile provided, yet no Assume_Role found")
-                        sys.exit(1)
+                    self.assume_profile = value
+            if self.assume_profile and not self.assume_role:
+                print ("[Error] Assume_Profile provided, yet no Assume_Role found")
+                sys.exit(1)
+        #If assume_role is assigned ,but assume_profile is not, use main profile
+        if self.assume_role and not self.assume_profile:
+            self.assume_profile = self.profile
 
         #Assert that critical variables are present
         if not self.username :
@@ -215,7 +224,11 @@ class ADFSAuth():
         #First Query - to get client-request-id and MSISamlRequest cookie
         headers = {'cache-control': "no-cache"}
         querystring = {'loginToRp': parameters['provider-id']}
-        response = requests.request("GET", url, data='', headers=headers, params=querystring)
+        try:
+            response = requests.request("GET", url, data='', headers=headers, params=querystring)
+        except:
+            print ("[Error]: Invalid adfs-host parameter, or connection to server failed")
+            sys.exit(1)
         answer  = response.text
         soup = BeautifulSoup(answer,features="lxml")
         cookies = response.cookies
@@ -234,6 +247,9 @@ class ADFSAuth():
         #Saml Response -> This contains all info neccesary to log in into system
         SAMLResponse =  soup.find('form').find('input').get('value') 
         # TODO: Assert that we got proper SAMLResponse and not null value
+        if len(SAMLResponse) < 1000:
+            print ("[Error]: Username/Password/provider-id invalid")
+            sys.exit(1)
         parameters_class.logs("SAML Response - Should contain big blob of data : {}".format(SAMLResponse))
         self.SAMLResponse = SAMLResponse
 
@@ -293,7 +309,7 @@ class ADFSAuth():
         assumed_dole = token['AssumedRoleUser']['Arn']
         print  ('Access Granted')
         print ('Assumed Role : {}'.format(assumed_dole))
-        print ('Token Expires: {}'.format(expiration))
+        print ('Token Expires: {} server time'.format(expiration))
 
         # Now to write that config into file
         home =  os.path.expanduser("~")
@@ -314,10 +330,16 @@ class ADFSAuth():
     def assume_role(self):
         session = boto3.Session(profile_name=self.parameters.profile)
         sts_client = session.client('sts')
-        assumedRoleObject = sts_client.assume_role(
-            RoleArn=self.parameters.assume_role,
-            RoleSessionName=self.parameters.assume_profile
-        )
+        try:         
+            assumedRoleObject = sts_client.assume_role(
+                RoleArn=self.parameters.assume_role,
+                RoleSessionName=self.parameters.assume_profile
+            )
+        except botocore.exceptions.ClientError as err:
+            print ("[Error] There is a problem with assuming role:")
+            print (err)
+            sys.exit(1)
+        print ("Assumed second role: {} on profile: {}".format(self.parameters.assume_role,self.parameters.assume_profile))
         credentials = assumedRoleObject['Credentials']
         
         home =  os.path.expanduser("~")
