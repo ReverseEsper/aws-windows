@@ -35,7 +35,7 @@ class GetParams:
     assume_role = ''
 
     epilog = """
-    Environmental Variables : 
+Environmental Variables : 
 
     AWS_USERNAME
     AWS_PASSWORD
@@ -44,17 +44,23 @@ class GetParams:
     AWS_PROVIDER_ID
     AWS_ROLE_ARN
 
-    Auth File Values :
+Auth File Values :
 
     [profile-name]
-    username=nyamko01@stepstone.com
-    password=SuperSecretPassword5
-    adfs-host=sts.stepstone.com
-    provider-id=arn:amazon:SomeCompanyTitle
-    role-arn=arn:aws:iam::1234567890:role/ADFS_ROLE_FITTING_MASTERS
+    username=login@your-domain.com
+    password=your-password
+    adfs-host=sts.your-domain.com
+    provider-id=arn:amazon:your-company-provider-id
+    role-arn=arn:aws:iam::1234567890:role/ADFS_ROLE_FOR_TASK
 
-    Command line parameters take precedence over auth file and environmental variables
-    auth file parameters take precedence over environmental variables
+    assume-role=arn:aws:iam::1234567890:role/role-to-assume-into-after-gettin-in
+    assume-profile=name-of-the-new-profile
+
+Two last option are optional and only in case when you need to assume another role straight after logging in
+if from both options, only assume-role is present, assume-profile will owervrite main profile credentials
+
+Command line parameters take precedence over auth file and environmental variables
+auth file parameters take precedence over environmental variables
     
     """
 
@@ -201,13 +207,15 @@ class ADFSAuth():
     principial_arn = ''
     role_arn = ''
 
-    def __init__(self,parameters):
-        self.parameters = parameters
+    def __init__(self):
+        self.parameters = GetParams()
         self.get_saml()
         principial_arn,role_arn = self.pick_role()
         self.principial_arn = principial_arn
         self.role_arn= role_arn
         self.create_temporary_credentials()
+        if self.parameters.assume_profile:
+            self.assume_role()
         # create_temporary_credentials(SAMLResponse,parameters)
         
     def get_saml(self):
@@ -357,13 +365,8 @@ class ADFSAuth():
         with open(filename, 'w') as configfile:
             config.write(configfile)
 
-
-
-
-parameters = GetParams()
-authentication = ADFSAuth(parameters)
-if parameters.assume_profile:
-    authentication.assume_role()
+if __name__ == "__main__":    
+    authentication = ADFSAuth()
 
 
 
