@@ -18,6 +18,7 @@ import base64
 import botocore
 import boto3
 import getpass
+from itertools import groupby
 
 class GetParams:
     LogLevel = 0
@@ -252,12 +253,19 @@ class ADFSAuth():
         response = requests.request("POST",url+action,headers=headers,data=form,cookies=cookies)
         soup = BeautifulSoup(response.text,features="lxml")
 
+        if response.status_code != 200:
+            print ("[Error]: Error getting SAML Response: status_code=" + str(response.status_code))
+            print(self.get_plain_text_from_soup(soup))
+            sys.exit(1)
+
         #Saml Response -> This contains all info neccesary to log in into system
         SAMLResponse =  soup.find('form').find('input').get('value') 
-        # TODO: Assert that we got proper SAMLResponse and not null value
-        if len(SAMLResponse) < 1000:
-            print ("[Error]: Username/Password/provider-id invalid")
+
+        if not SAMLResponse or len(SAMLResponse) < 1000:
+            print ("[Error]: Invalid SAML Response")
+            print(self.get_plain_text_from_soup(soup))
             sys.exit(1)
+
         parameters_class.logs("SAML Response - Should contain big blob of data : {}".format(SAMLResponse))
         self.SAMLResponse = SAMLResponse
 
@@ -365,9 +373,25 @@ class ADFSAuth():
         with open(filename, 'w') as configfile:
             config.write(configfile)
 
-if __name__ == "__main__":    
+    def get_plain_text_from_soup(self, soup):
+        # remove tags that has JS or CSS
+        for script in soup(["script", "style"]):
+            script.decompose()
+
+        # get only text from HTML
+        text = soup.get_text()
+
+        # break into lines and remove leading and trailing space on each
+        lines = (line.strip() for line in text.splitlines())
+
+        # remove duplicate lines (especially blank lines)
+        lines = [x[0] for x in groupby(lines)]
+
+        # join all lines into single string
+        text = '\n'.join(lines)
+        return text.encode("ascii", errors="replace")
+
+
+if __name__ == "__main__":
     authentication = ADFSAuth()
-
-
-
 
