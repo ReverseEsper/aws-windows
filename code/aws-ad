@@ -68,7 +68,7 @@ auth file parameters take precedence over environmental variables
     def __init__(self):
         self.get_parameters()
         self.logs("Log parameters  - username: {}".format(self.username))
-        self.logs("Log parameters  - Password: {}".format(self.password))
+        # self.logs("Log parameters  - Password: {}".format(self.password))
         self.logs("Log parameters  - adfs_host: {}".format(self.adfs_host))
         self.logs("Log parameters  - provider_id: {}".format(self.provider_id))
         self.logs("Log parameters  - profile: {}".format(self.profile))
