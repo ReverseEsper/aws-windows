@@ -10,6 +10,7 @@ randomly refused to work under bamboo
 
 1. Create config file: `~/.aws/auth`. It will be used by `aws-ad` to connect to ADFS site and to login. Here is sample content:
 
+
     [profile-name]
         username=login@your-domain.com
         # password=your-password - this is OPTIONAL
