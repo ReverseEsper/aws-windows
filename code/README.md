@@ -11,16 +11,16 @@ randomly refused to work under bamboo
 1. Create config file: `~/.aws/auth`. It will be used by `aws-ad` to connect to ADFS site and to login. Here is sample content:
 
 
-    [profile-name]
-        username=login@your-domain.com
-        # password=your-password - this is OPTIONAL
-        adfs-host=sts.your-domain.com
-        provider-id=urn:amazon:your-company-provider-id
-        role-arn=arn:aws:iam::1234567890:role/ADFS_ROLE_FOR_TASK
-        
-        # OPTIONAL variables that change behaviour of profile :
-        # assume-role=arn:aws:iam::1234567890:role/role-to-assume-into-after-gettin-in
-        # assume-profile=name-of-the-new-profile
+        [profile-name]
+            username=login@your-domain.com
+            # password=your-password - this is OPTIONAL
+            adfs-host=sts.your-domain.com
+            provider-id=urn:amazon:your-company-provider-id
+            role-arn=arn:aws:iam::1234567890:role/ADFS_ROLE_FOR_TASK
+            
+            # OPTIONAL variables that change behaviour of profile :
+            # assume-role=arn:aws:iam::1234567890:role/role-to-assume-into-after-gettin-in
+            # assume-profile=name-of-the-new-profile
 
 
 2. Run `aws-ad` with following options:
