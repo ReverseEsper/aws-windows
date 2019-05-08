@@ -21,7 +21,8 @@ randomly refused to work under bamboo
         # OPTIONAL variables that change behaviour of profile :
         # assume-role=arn:aws:iam::1234567890:role/role-to-assume-into-after-gettin-in
         # assume-profile=name-of-the-new-profile
-    
+
+
 2. Run `aws-ad` with following options:
 
     aws-ad --profile profile-name
