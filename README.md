@@ -25,7 +25,9 @@ randomly refused to work under bamboo
     
 2. Run `aws-ad` with following options:
 
-    aws-ad --profile profile-name
+
+        aws-ad --profile profile-name
+
     
 Keep in mind that `profile-name` must be the same as in config file above
 You may be prompted for password (to your login@your-domain.com in Active Directory).
@@ -33,6 +35,9 @@ You may be prompted for password (to your login@your-domain.com in Active Direct
 
 3. You can now run AWS CLI commands now. Remember to set AWS Region and AWS Profile, like this:
 
-    export AWS_PROFILE=profile-name
-    export AWS_DEFAULT_REGION=eu-central-1
-    aws s3 ls
+
+        export AWS_PROFILE=profile-name
+        export AWS_DEFAULT_REGION=eu-central-1
+        aws s3 ls
+
+
