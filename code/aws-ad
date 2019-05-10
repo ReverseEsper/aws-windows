@@ -19,6 +19,7 @@ import botocore
 import boto3
 import getpass
 from itertools import groupby
+import uuid
 
 
 class GetParams:
@@ -243,17 +244,14 @@ class ADFSAuth:
         headers = {'cache-control': "no-cache"}
         querystring = {
             'loginToRp': self.parameters.provider_id,
+            # 'client-request-id': str(uuid.uuid4()) # doesn't work, so we are using fixed value here.
             'client-request-id': '5ec0500e-584a-4a41-6b26-aaaaaffffccc'
         }
         if self.parameters.verbose > 1:
             print("Opening URL (GET): " + url)
         response = requests.request("GET", url, headers=headers, params=querystring)
-        if self.parameters.verbose > 2:
-            print("Welcome page status code: " + str(response.status_code))
-            print("Welcome page text:")
-            print("========================")
-            print(response.text)
-            print("========================")
+        self.debug_write_file("welcome_page.html", response.text)
+
         if response.status_code != 200:
             raise Exception("Welcome page status_code = " + response.status_code)
 
@@ -293,12 +291,7 @@ class ADFSAuth:
         if self.parameters.verbose > 1:
             print("Opening URL (POST): " + url2)
         response = requests.request("POST", url2, headers=headers, data=form, cookies=welcome_page_result.cookies)
-        if self.parameters.verbose > 2:
-            print("Submit credentials status code: " + str(response.status_code))
-            print("Submit credentials text:")
-            print("========================")
-            print(response.text)
-            print("========================")
+        self.debug_write_file("submit_credentials.html", response.text)
 
         soup = BeautifulSoup(response.text,features="lxml")
 
@@ -321,16 +314,14 @@ class ADFSAuth:
             print(self.get_plain_text_from_soup(soup))
             raise Exception("Submit credentials, SAMLResponse element contains too short text.")
 
-        self.parameters.logs("SAML Response - Should contain big blob of data : {}".format(SAMLResponse))
+        self.parameters.logs("SAML Response - Should contain big blob of data. length = {}".format(len(SAMLResponse)))
         self.SAMLResponse = SAMLResponse
 
     def pick_role(self):
-        soup = BeautifulSoup(base64.b64decode(self.SAMLResponse), features='lxml')
+        SAMLResponse_decoded = base64.b64decode(self.SAMLResponse)
+        soup = BeautifulSoup(SAMLResponse_decoded, features='lxml')
         roles_html = soup.find("attribute",attrs={'name':"https://aws.amazon.com/SAML/Attributes/Role"})
-        if self.parameters.verbose > 2:
-            print("========================")
-            print(roles_html)
-            print("========================")
+        self.debug_write_file("SAMLResponse_decoded.xml", str(SAMLResponse_decoded, 'UTF-8'))
 
         roles = []
         print("Decoded roles:")
@@ -442,6 +433,13 @@ class ADFSAuth:
         text = '\n'.join(lines)
         return text.encode("ascii", errors="replace")
 
+    def debug_write_file(self, filename, content_str):
+        if type(content_str) is not str:
+            content_str = str(content_str)
+        if self.parameters.verbose > 2:
+            print("Writing to file: " + filename)
+            with open(filename, "w") as f:
+                f.write(content_str)
 
 if __name__ == "__main__":
     authentication = ADFSAuth()
