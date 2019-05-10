@@ -19,6 +19,8 @@ import botocore
 import boto3
 import getpass
 from itertools import groupby
+import uuid
+
 
 class GetParams:
     LogLevel = 0
@@ -75,7 +77,6 @@ auth file parameters take precedence over environmental variables
         self.logs("Log parameters  - auth_file: {}".format(self.auth_file))
         self.logs("Log parameters  - role_arn: {}".format(self.role_arn))
         self.logs("Log parameters  - verbose: {}".format(self.verbose))
-
 
     def logs(self,msg,warning_level='Info'):
         if self.verbose:
@@ -151,8 +152,6 @@ auth file parameters take precedence over environmental variables
             print ("[Error] assume-profile provided, yet no Assume_Role found")
             sys.exit(1)
 
-
-
     def get_parameters(self):
         self.get_env_parameters()
         args = self.get_arg_parameters()
@@ -202,7 +201,16 @@ auth file parameters take precedence over environmental variables
             sys.exit(1)
         return
 
-class ADFSAuth():
+
+class WelcomePageResult:
+    cookies = None
+    action = None
+
+    def __str__(self):
+        return "LoginPageResult(action=" + self.action + ")"
+
+
+class ADFSAuth:
     SAMLResponse = ''
     parameters = ''
     principial_arn = ''
@@ -217,74 +225,116 @@ class ADFSAuth():
         self.create_temporary_credentials()
         if self.parameters.assume_profile:
             self.assume_role()
-        # create_temporary_credentials(SAMLResponse,parameters)
         
     def get_saml(self):
-
-        parameters_class = self.parameters
-        parameters = {}
-        parameters['adfs-host']=parameters_class.adfs_host
-        parameters['provider-id']=parameters_class.provider_id
-        parameters['username']=parameters_class.username
-        parameters['password']=parameters_class.password
-
-        url = 'https://'+parameters['adfs-host']+"/adfs/ls/IdpInitiatedSignOn.aspx"
-
-        #First Query - to get client-request-id and MSISamlRequest cookie
-        headers = {'cache-control': "no-cache"}
-        querystring = {'loginToRp': parameters['provider-id']}
         try:
-            response = requests.request("GET", url, data='', headers=headers, params=querystring)
-        except:
-            print ("[Error]: Invalid adfs-host parameter, or connection to server failed")
+            welcome_page_result = self.open_welcome_page()
+            self.submit_credentials(welcome_page_result)
+        except Exception as e:
+            print ("[Error]: Error getting SAML assertion: " + str(e))
             sys.exit(1)
-        answer  = response.text
-        soup = BeautifulSoup(answer,features="lxml")
-        cookies = response.cookies
-        action = soup.find('form',id='loginForm').get('action')
 
+    def open_welcome_page(self):
+        """
+
+        :rtype: WelcomePageResult
+        """
+        #First Query - to get client-request-id and MSISamlRequest cookie
+        url = 'https://'+self.parameters.adfs_host+"/adfs/ls/IdpInitiatedSignOn.aspx"
+        headers = {'cache-control': "no-cache"}
+        querystring = {
+            'loginToRp': self.parameters.provider_id,
+            # 'client-request-id': str(uuid.uuid4()) # doesn't work, so we are using fixed value here.
+            'client-request-id': '5ec0500e-584a-4a41-6b26-aaaaaffffccc'
+        }
+        if self.parameters.verbose > 1:
+            print("Opening URL (GET): " + url)
+        response = requests.request("GET", url, headers=headers, params=querystring)
+        self.debug_write_file("welcome_page.html", response.text)
+
+        if response.status_code != 200:
+            raise Exception("Welcome page status_code = " + response.status_code)
+
+        soup = BeautifulSoup(response.text, features="lxml")
+
+        form_element = soup.find('form', id='loginForm')
+        if form_element is None:
+            raise Exception("Welcome page, loginForm element not found.")
+
+        all_input_names = [x.attrs['name'] for x in form_element.find_all('input')]
+        if self.parameters.verbose > 2:
+            print("Welcome page, all input elements: " + str(all_input_names))
+        required_input_fields = set(['UserName', 'Password'])
+        if not required_input_fields.issubset(set(all_input_names)):
+            raise Exception("Welcome page, Can not find all required input fields (" + str(required_input_fields) + ") in fields on welcome page: " + str(set(all_input_names)))
+
+        r = WelcomePageResult()
+        r.cookies = response.cookies
+        r.action = form_element.get('action')
+        return r
+
+    def submit_credentials(self, welcome_page_result):
+        """
+
+        :param welcome_page_result:
+        :type welcome_page_result: WelcomePageResult
+        :return:
+        """
         #Second Query - to get SAMLResponse
         headers = { 'Content-Type':'application/x-www-form-urlencoded'}
         form = {
-            'UserName': parameters['username'],
-            'Password': parameters['password'],
+            'UserName': self.parameters.username,
+            'Password': self.parameters.password,
             'AuthMethod': 'FormsAuthentication'
         }
-        response = requests.request("POST",url+action,headers=headers,data=form,cookies=cookies)
+        url2 = 'https://' + self.parameters.adfs_host + welcome_page_result.action
+        if self.parameters.verbose > 1:
+            print("Opening URL (POST): " + url2)
+        response = requests.request("POST", url2, headers=headers, data=form, cookies=welcome_page_result.cookies)
+        self.debug_write_file("submit_credentials.html", response.text)
+
         soup = BeautifulSoup(response.text,features="lxml")
 
         if response.status_code != 200:
-            print ("[Error]: Error getting SAML Response: status_code=" + str(response.status_code))
             print(self.get_plain_text_from_soup(soup))
-            sys.exit(1)
+            raise Exception("Submit credentials response code=" + str(response.status_code))
+
+        form_element = soup.find('form')
+        if form_element is None:
+            raise Exception("Submit credentials, form element not found.")
 
         #Saml Response -> This contains all info neccesary to log in into system
-        SAMLResponse =  soup.find('form').find('input').get('value') 
+        SAMLResponse_element = form_element.find('input', attrs={'name': 'SAMLResponse'})
+        if SAMLResponse_element is None:
+            raise Exception("Submit credentials, SAMLResponse element not found.")
+
+        SAMLResponse = SAMLResponse_element.get('value')
 
         if not SAMLResponse or len(SAMLResponse) < 1000:
-            print ("[Error]: Invalid SAML Response")
             print(self.get_plain_text_from_soup(soup))
-            sys.exit(1)
+            raise Exception("Submit credentials, SAMLResponse element contains too short text.")
 
-        parameters_class.logs("SAML Response - Should contain big blob of data : {}".format(SAMLResponse))
+        self.parameters.logs("SAML Response - Should contain big blob of data. length = {}".format(len(SAMLResponse)))
         self.SAMLResponse = SAMLResponse
 
-
     def pick_role(self):
-        SAMLResponse = self.SAMLResponse
-        param_role_arn = self.parameters.role_arn
-        soup = BeautifulSoup(base64.b64decode(SAMLResponse),features='lxml')
+        SAMLResponse_decoded = base64.b64decode(self.SAMLResponse)
+        soup = BeautifulSoup(SAMLResponse_decoded, features='lxml')
         roles_html = soup.find("attribute",attrs={'name':"https://aws.amazon.com/SAML/Attributes/Role"})
+        self.debug_write_file("SAMLResponse_decoded.xml", str(SAMLResponse_decoded, 'UTF-8'))
+
         roles = []
+        print("Decoded roles:")
         for role in roles_html.find_all('attributevalue'):
             role_pair = role.text.split(',')
             principial_arn,role_arn = role_pair[0], role_pair[1]
             roles.append(role_pair)
-            if role_arn == param_role_arn:
-                print ("Role found.")
+            print("    Principal ARN: " + principial_arn + "    Role ARN: " + role_arn)
+            if role_arn == self.parameters.role_arn:
+                print ("Role found: " + self.parameters.role_arn)
                 return principial_arn, role_arn
         if len(roles) > 1 :
-            print ("Multiple roles found:")
+            print("Role: " + self.parameters.role_arn  + " not found or multiple roles found. Please select from list below.")
             i=0
             for role in roles:
                 print ("{} Role: {}".format(i,role[1]))
@@ -297,7 +347,6 @@ class ADFSAuth():
         else:
             print ("[Error] No Role found") 
             sys.exit(1)
-
 
     def create_temporary_credentials(self):
         # TODO: Implement testing if login suceeded
@@ -323,25 +372,12 @@ class ADFSAuth():
         # Extra info for output
         expiration = token['Credentials']['Expiration']
         assumed_dole = token['AssumedRoleUser']['Arn']
-        print  ('Access Granted')
+        print ('Access Granted')
         print ('Assumed Role : {}'.format(assumed_dole))
         print ('Token Expires: {} server time'.format(expiration))
 
         # Now to write that config into file
-        home =  os.path.expanduser("~")
-        filename = home + '/.aws/credentials'
-        config = configparser.ConfigParser()
-        config.read(filename)
-        config[profile]= {
-            'aws_access_key_id' : aws_access_key_id,
-            'aws_secret_access_key' : aws_secret_key,
-            'aws_session_token' : aws_session_token
-        }
-        config_folder = home+'/.aws'
-        if not os.path.exists(config_folder):
-            os.makedirs(config_folder)
-        with open(filename, 'w') as configfile:
-            config.write(configfile)
+        self.save_profile_credentials(profile, aws_access_key_id, aws_secret_key, aws_session_token)
     
     def assume_role(self):
         session = boto3.Session(profile_name=self.parameters.profile)
@@ -357,21 +393,27 @@ class ADFSAuth():
             sys.exit(1)
         print ("Assumed second role: {} on profile: {}".format(self.parameters.assume_role,self.parameters.assume_profile))
         credentials = assumedRoleObject['Credentials']
-        
-        home =  os.path.expanduser("~")
+
+        self.save_profile_credentials(self.parameters.assume_profile, credentials['AccessKeyId'], credentials['SecretAccessKey'], credentials['SessionToken'])
+
+    def save_profile_credentials(self, profile_name, access_key, secret_access_key, session_token):
+        home = os.path.expanduser("~")
         filename = home + '/.aws/credentials'
-        config = configparser.ConfigParser()
-        config.read(filename)
-        config[self.parameters.assume_profile]= {
-            'aws_access_key_id' : credentials['AccessKeyId'],
-            'aws_secret_access_key' : credentials['SecretAccessKey'],
-            'aws_session_token' : credentials['SessionToken']
+        print("Reading file " + filename)
+        aws_credentials = configparser.ConfigParser()
+        aws_credentials.read(filename)
+        aws_credentials[profile_name]= {
+            'aws_access_key_id': access_key,
+            'aws_secret_access_key': secret_access_key,
+            'aws_session_token': session_token
         }
         config_folder = home+'/.aws'
         if not os.path.exists(config_folder):
             os.makedirs(config_folder)
+
+        print("Writing file " + filename + " with updated profile [" + profile_name + "]")
         with open(filename, 'w') as configfile:
-            config.write(configfile)
+            aws_credentials.write(configfile)
 
     def get_plain_text_from_soup(self, soup):
         # remove tags that has JS or CSS
@@ -391,6 +433,13 @@ class ADFSAuth():
         text = '\n'.join(lines)
         return text.encode("ascii", errors="replace")
 
+    def debug_write_file(self, filename, content_str):
+        if type(content_str) is not str:
+            content_str = str(content_str)
+        if self.parameters.verbose > 2:
+            print("Writing to file: " + filename)
+            with open(filename, "w") as f:
+                f.write(content_str)
 
 if __name__ == "__main__":
     authentication = ADFSAuth()

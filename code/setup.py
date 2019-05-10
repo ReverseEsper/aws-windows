@@ -3,7 +3,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 setuptools.setup(
      name='aws-ad',  
-     version='0.3',
+     version='0.5',
      scripts=['aws-ad'] ,
      author="Adam Kurowski",
      author_email="adam.kurowski.git@darevee.pl",
