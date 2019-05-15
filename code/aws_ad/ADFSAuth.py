@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
 #-*- coding: utf-8 -*-
 """
 Author : Adam Kurowski <adam.kurowski.git@darevee.pl>
 
-aws-adfs - script to get AWS credentials using domain login and password
+aws-ad - script to get AWS credentials using domain login and password
 """
 
 import os
@@ -19,7 +18,6 @@ import botocore
 import boto3
 import getpass
 from itertools import groupby
-import uuid
 
 
 class GetParams:
@@ -441,6 +439,6 @@ class ADFSAuth:
             with open(filename, "w") as f:
                 f.write(content_str)
 
-if __name__ == "__main__":
-    authentication = ADFSAuth()
 
+def main_func():
+    authentication = ADFSAuth()
