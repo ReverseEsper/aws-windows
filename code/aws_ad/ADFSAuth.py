@@ -40,7 +40,7 @@ Environmental Variables :
 
     AWS_USERNAME
     AWS_PASSWORD
-    AWS_PROFILE
+    AWS_DEFAULT_PROFILE
     AWS_ADFS_HOST
     AWS_PROVIDER_ID
     AWS_ROLE_ARN
@@ -83,7 +83,7 @@ auth file parameters take precedence over environmental variables
     def get_env_parameters(self):
         envs  = {
             'AWS_USERNAME':'username','AWS_PASSWORD':'password',
-            'AWS_PROFILE':'profile','AWS_ADFS_HOST':'adfs-host',
+            'AWS_DEFAULT_PROFILE':'profile','AWS_ADFS_HOST':'adfs-host',
             'AWS_PROVIDER_ID':'provider-id','AWS_ROLE_ARN':'role-arn'
         }
         for key in envs:
@@ -99,7 +99,9 @@ auth file parameters take precedence over environmental variables
                 elif key == 'AWS_PROVIDER_ID':
                     self.provider_id = value
                 elif key == 'AWS_ROLE_ARN':
-                    self.role_arn = value 
+                    self.role_arn = value
+                elif key == 'AWS_DEFAULT_PROFILE':
+                    self.profile = value
 
     def get_arg_parameters(self):
         #Prepare Command Variables
