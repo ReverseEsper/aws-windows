@@ -3,7 +3,7 @@ with open("../README.md", "r") as fh:
     long_description = fh.read()
 setuptools.setup(
     name='aws-ad',
-    version='0.6.1',
+    version='0.6.2',
     entry_points={
         "console_scripts": [
             "aws-ad = aws_ad.ADFSAuth:main_func"
@@ -16,7 +16,7 @@ setuptools.setup(
     use_2to3=True,
     long_description_content_type="text/markdown",
     url="https://github.com/ReverseEsper/aws-windows",
-    install_requires=['bs4', 'boto3', 'configparser', 'argparse', 'requests', 'lxml'],
+    install_requires=['bs4', 'boto3', 'configparser', 'argparse', 'requests', 'lxml', 'ConfigArgParse'],
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
