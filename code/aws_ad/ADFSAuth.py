@@ -309,6 +309,8 @@ class ADFSAuth:
             sys.exit(1)
 
     def create_temporary_credentials(self):
+        self.make_sure_profile_exists(self.parameters.profile)
+
         # TODO: Implement testing if login suceeded
         client = boto3.client('sts')
         try:
@@ -327,7 +329,6 @@ class ADFSAuth:
         aws_access_key_id = token['Credentials']['AccessKeyId']
         aws_secret_key = token['Credentials']['SecretAccessKey']
         aws_session_token = token['Credentials']['SessionToken']
-        profile = self.parameters.profile
 
         # Extra info for output
         expiration = token['Credentials']['Expiration']
@@ -337,7 +338,7 @@ class ADFSAuth:
         print ('Token Expires: {} server time'.format(expiration))
 
         # Now to write that config into file
-        self.save_profile_credentials(profile, aws_access_key_id, aws_secret_key, aws_session_token)
+        self.save_profile_credentials(self.parameters.profile, aws_access_key_id, aws_secret_key, aws_session_token)
     
     def assume_role(self):
         print("Creating boto3.Session with profile=%s" % self.parameters.profile)
@@ -369,12 +370,35 @@ class ADFSAuth:
             'aws_session_token': session_token
         }
         config_folder = home+'/.aws'
-        if not os.path.exists(config_folder):
-            os.makedirs(config_folder)
+        os.makedirs(config_folder, exist_ok=True)
 
         print("Writing file " + filename + " with updated profile [" + profile_name + "]")
         with open(filename, 'w') as configfile:
             aws_credentials.write(configfile)
+
+    def make_sure_profile_exists(self, profile_name):
+        home = os.path.expanduser("~")
+        filename = home + '/.aws/config'
+        print("Reading file " + filename)
+        aws_profiles_data = configparser.ConfigParser()
+        aws_profiles_data.read(filename)
+
+        profile_label = "profile " + profile_name
+        if profile_name == "default":
+            profile_label = "default"
+
+        if profile_label not in aws_profiles_data:
+            print("Profile %s not found. Creating one..." % profile_name)
+            aws_profiles_data[profile_label] = {}
+
+            config_folder = home+'/.aws'
+            os.makedirs(config_folder, exist_ok=True)
+
+            print("Writing file " + filename + " with updated profile [" + profile_name + "]")
+            with open(filename, 'w') as configfile:
+                aws_profiles_data.write(configfile)
+        else:
+            print("Profile %s exists." % profile_name)
 
     def get_plain_text_from_soup(self, soup):
         # remove tags that has JS or CSS
