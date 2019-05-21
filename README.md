@@ -36,7 +36,7 @@ You may be prompted for password (to your login@your-domain.com in Active Direct
 3. You can now run AWS CLI commands now. Remember to set AWS Region and AWS Profile, like this:
 
 
-        export AWS_PROFILE=profile-name
+        export AWS_DEFAULT_PROFILE=profile-name
         export AWS_DEFAULT_REGION=eu-central-1
         aws s3 ls
 

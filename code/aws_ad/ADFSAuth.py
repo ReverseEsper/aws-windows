@@ -1,16 +1,17 @@
-#!/usr/bin/env python3
 #-*- coding: utf-8 -*-
 """
 Author : Adam Kurowski <adam.kurowski.git@darevee.pl>
 
-aws-adfs - script to get AWS credentials using domain login and password
+aws-ad - script to get AWS credentials using domain login and password
 """
 
 import os
 import sys
-import argparse
+import configargparse
 from argparse import RawTextHelpFormatter
+import argparse
 import configparser
+from pprint import pprint
 
 import requests
 from bs4 import BeautifulSoup
@@ -19,34 +20,24 @@ import botocore
 import boto3
 import getpass
 from itertools import groupby
-import uuid
 
 
 class GetParams:
     LogLevel = 0
 
-    username = ''
-    password = ''
-    adfs_host = ''
-    provider_id = ''
-    profile = 'default'
-    auth_file = '~/.aws/auth'
-    role_arn = ''
+    username = None
+    password = None
+    adfs_host = None
+    provider_id = None
+    profile = None
+    auth_file = None
+    role_arn = None
     verbose = 0
 
-    assume_profile = ''
-    assume_role = ''
+    assume_profile = None
+    assume_role = None
 
     epilog = """
-Environmental Variables : 
-
-    AWS_USERNAME
-    AWS_PASSWORD
-    AWS_PROFILE
-    AWS_ADFS_HOST
-    AWS_PROVIDER_ID
-    AWS_ROLE_ARN
-
 Auth File Values :
 
     [profile-name]
@@ -69,138 +60,102 @@ auth file parameters take precedence over environmental variables
 
     def __init__(self):
         self.get_parameters()
-        self.logs("Log parameters  - username: {}".format(self.username))
-        # self.logs("Log parameters  - Password: {}".format(self.password))
-        self.logs("Log parameters  - adfs_host: {}".format(self.adfs_host))
-        self.logs("Log parameters  - provider_id: {}".format(self.provider_id))
-        self.logs("Log parameters  - profile: {}".format(self.profile))
-        self.logs("Log parameters  - auth_file: {}".format(self.auth_file))
-        self.logs("Log parameters  - role_arn: {}".format(self.role_arn))
-        self.logs("Log parameters  - verbose: {}".format(self.verbose))
 
     def logs(self,msg,warning_level='Info'):
         if self.verbose:
             print ("[{}]: {}".format(warning_level,msg))
 
-    def get_env_parameters(self):
-        envs  = {
-            'AWS_USERNAME':'username','AWS_PASSWORD':'password',
-            'AWS_PROFILE':'profile','AWS_ADFS_HOST':'adfs-host',
-            'AWS_PROVIDER_ID':'provider-id','AWS_ROLE_ARN':'role-arn'
-        }
-        for key in envs:
-            if key in os.environ:
-                self.logs ("Key Env: {}  importing ".format(key))
-                value = os.environ[key]   
-                if key == 'AWS_USERNAME': 
-                    self.username = value
-                elif key == 'AWS_PASSWORD':
-                    self.password = value
-                elif key == 'AWS_ADFS_HOST':
-                    self.adfs_host = value
-                elif key == 'AWS_PROVIDER_ID':
-                    self.provider_id = value
-                elif key == 'AWS_ROLE_ARN':
-                    self.role_arn = value 
+    def log_args_dict(self, info, dict_like):
+        print("%s  type(dict_like)=%s  size(dict_like)=%d" % (info, str(type(dict_like)), len(dict_like)))
+        for k, v in dict_like.items():
+            if k == 'password':
+                print("  %s = %s" % (k, '*' * len(v) if v is not None else 'None'))
+            else:
+                print("  %s = %s" % (k, v))
 
     def get_arg_parameters(self):
         #Prepare Command Variables
-        parser = argparse.ArgumentParser(description="Log into AWS using ADFS",epilog=self.epilog,formatter_class=RawTextHelpFormatter)
-        parser.add_argument("--username", help="full domain login i.e.: user01@organisation.com")
-        parser.add_argument("--adfs-host", help="ADFS login domain i.e.: sts.domain.com")
-        parser.add_argument("--provider-id", help="Provider ID i.e.: urn:amazon:SomeCompany")
-        parser.add_argument("--profile", help="Profile name. if none 'default' will be picked", default="default")
-        parser.add_argument("--auth-file", help="File with proper credentials")
-        parser.add_argument("--role-arn", help="ARN role to assume")
+        parser = configargparse.ArgumentParser(description="Log into AWS using ADFS",epilog=self.epilog,formatter_class=RawTextHelpFormatter)
+        parser.add_argument("--username", env_var="AWS_USERNAME", help="full domain login i.e.: user01@organisation.com")
+        parser.add_argument("--adfs-host", env_var="AWS_ADFS_HOST", help="ADFS login domain i.e.: sts.domain.com")
+        parser.add_argument("--provider-id", env_var="AWS_PROVIDER_ID", help="Provider ID i.e.: urn:amazon:SomeCompany")
+        parser.add_argument("--profile", env_var="AWS_DEFAULT_PROFILE", help="Profile name. if none 'default' will be picked", default="default")
+        parser.add_argument("--auth-file", help="File with proper credentials", default="~/.aws/auth")
+        parser.add_argument("--role-arn", env_var="AWS_ROLE_ARN", help="ARN role to assume")
         parser.add_argument("--assume-role", help="After getting login, assumes new role")
         parser.add_argument("--assume-profile", help="Profile for assumed role")
         parser.add_argument("-v","--verbose", help="Increase output verbosity",action="count", default=0)
         # Notice Lack of Password. It is intentional, as I don't see any reason to put password in open file
         args = parser.parse_args()
+
+        args.password = os.environ.get('AWS_PASSWORD', None)
         return args
 
     def get_auth_file_parameters(self):
+        """
+
+        :return:
+        :rtype: argparse.Namespace
+        """
         # Check if file exists
         if not os.path.isfile(os.path.expanduser(self.auth_file)):
             self.logs("No file {} found.".format(self.auth_file),'Error')
-            return
+            return {}
         self.logs("Auth file found, getting data...")
-        profile = self.profile
-        self.logs("Profile: {}".format(profile))
+        self.logs("Profile: {}".format(self.profile))
 
         config = configparser.ConfigParser()
         config.read(os.path.expanduser(self.auth_file))
-        if profile in config:
-            self.logs ("Profile in config found, importing...")
-            for key,value in config[profile].items():
-                self.logs("Key: {} importing".format(key))
-                if key == 'username': 
-                    self.username = value
-                elif key == 'password':
-                    self.password = value
-                elif key == 'adfs-host':
-                    self.adfs_host = value
-                elif key == 'provider-id':
-                    self.provider_id = value
-                elif key == 'role-arn':
-                    self.role_arn = value
-                elif key == 'assume-role':
-                    self.assume_role = value
-                elif key == 'assume-profile':
-                    self.assume_profile = value
-        if self.assume_profile and not self.assume_role:
-            print ("[Error] assume-profile provided, yet no Assume_Role found")
-            sys.exit(1)
+        if self.profile in config:
+            self.logs("Profile in config found, importing...")
+            r = {}
+            for key, value in config[self.profile].items():
+                if key in ['username', 'password', 'adfs-host', 'provider-id', 'role-arn', 'assume-role', 'assume-profile']:
+                    r[key.replace('-', '_')] = value
+            return r
+        else:
+            self.logs("Profile [%s] not found in auth file." % (self.profile))
+            return {}
 
     def get_parameters(self):
-        self.get_env_parameters()
-        args = self.get_arg_parameters()
-        
-        self.verbose = args.verbose
-        if args.auth_file:
-            self.auth_file = args.auth_file
-        if args.profile:
-            self.profile = args.profile
+        cmd_line_args = vars(self.get_arg_parameters())
 
-        self.get_auth_file_parameters()
-        
+        self.verbose = cmd_line_args["verbose"]
+        self.auth_file = cmd_line_args["auth_file"]
+        self.profile = cmd_line_args["profile"]
+
+        auth_file_args = self.get_auth_file_parameters()
+
+        all_args = auth_file_args.copy()
+        for k, v in cmd_line_args.items():
+            if v is not None:
+                all_args[k] = v
+
+        if self.verbose > 2:
+            self.log_args_dict("Parameters only from command line and environment variables", cmd_line_args)
+            self.log_args_dict("Parameters only from config file", auth_file_args)
+            self.log_args_dict("Parameters MERGED", all_args)
+
+        for k, v in all_args.items():
+            setattr(self, k, v)
+
         # And at least, overwrite all configuration with top priority one - got as variables
-        for key,value in vars(args).items():
-            if value:
-                if key == 'username': 
-                    self.username = value
-                elif key == 'adfs_host':
-                    self.adfs_host = value
-                elif key == 'provider_id':
-                    self.provider_id = value
-                elif key == 'role_arn':
-                    self.role_arn = value
-                elif key == 'assume_role':
-                    self.assume_role = value
-                elif key == 'assume_profile':
-                    self.assume_profile = value
-            if self.assume_profile and not self.assume_role:
-                print ("[Error] Assume_Profile provided, yet no Assume_Role found")
-                sys.exit(1)
-        #If assume_role is assigned ,but assume_profile is not, use main profile
-        if self.assume_role and not self.assume_profile:
-            self.assume_profile = self.profile
+        args_missing = False
+        for k in ['username', 'adfs_host', 'provider_id', 'profile', 'auth_file', 'role_arn']:
+            if getattr(self, k) is None:
+                args_missing = True
+                print("[Error] Missing parameter for [%s]." % k)
 
-        #Assert that critical variables are present
-        if not self.username :
-            print ("[Error]: No Username found")
+        if (self.assume_profile and not self.assume_role) or (not self.assume_profile and self.assume_role):
+            args_missing = True
+            print ("[Error] Either both assume-profile and assume-role must be provided or both must be absent.")
+
+        if args_missing:
             sys.exit(1)
+
         if not self.password:
             print ("[Warning]: No Password found")
             self.password = getpass.getpass('Password:')
-        if not self.adfs_host:
-            print ("[Error]: No ADFS Host found")
-            sys.exit(1)
-        if not self.provider_id :
-            print ("[Error]: No Provider ID found")
-            sys.exit(1)
-        return
-
 
 class WelcomePageResult:
     cookies = None
@@ -225,13 +180,13 @@ class ADFSAuth:
         self.create_temporary_credentials()
         if self.parameters.assume_profile:
             self.assume_role()
-        
+
     def get_saml(self):
         try:
             welcome_page_result = self.open_welcome_page()
             self.submit_credentials(welcome_page_result)
         except Exception as e:
-            print ("[Error]: Error getting SAML assertion: " + str(e))
+            print ("[Error]: Error getting SAML assertion: " + str(type(e)) + ": " + str(e))
             sys.exit(1)
 
     def open_welcome_page(self):
@@ -245,7 +200,7 @@ class ADFSAuth:
         querystring = {
             'loginToRp': self.parameters.provider_id,
             # 'client-request-id': str(uuid.uuid4()) # doesn't work, so we are using fixed value here.
-            'client-request-id': '5ec0500e-584a-4a41-6b26-aaaaaffffccc'
+            'client-request-id': '5ec0ff0e-5e4a-4a41-6be6-aaaaaffffccc'
         }
         if self.parameters.verbose > 1:
             print("Opening URL (GET): " + url)
@@ -303,9 +258,14 @@ class ADFSAuth:
         if form_element is None:
             raise Exception("Submit credentials, form element not found.")
 
+        all_input_names = [x.attrs['name'] for x in form_element.find_all('input') if 'name' in x.attrs]
+        if self.parameters.verbose > 2:
+            print("Submit credentials, all input elements: " + str(all_input_names))
+
         #Saml Response -> This contains all info neccesary to log in into system
         SAMLResponse_element = form_element.find('input', attrs={'name': 'SAMLResponse'})
         if SAMLResponse_element is None:
+            print(self.get_plain_text_from_soup(soup))
             raise Exception("Submit credentials, SAMLResponse element not found.")
 
         SAMLResponse = SAMLResponse_element.get('value')
@@ -349,6 +309,8 @@ class ADFSAuth:
             sys.exit(1)
 
     def create_temporary_credentials(self):
+        self.make_sure_profile_exists(self.parameters.profile)
+
         # TODO: Implement testing if login suceeded
         client = boto3.client('sts')
         try:
@@ -367,7 +329,6 @@ class ADFSAuth:
         aws_access_key_id = token['Credentials']['AccessKeyId']
         aws_secret_key = token['Credentials']['SecretAccessKey']
         aws_session_token = token['Credentials']['SessionToken']
-        profile = self.parameters.profile
 
         # Extra info for output
         expiration = token['Credentials']['Expiration']
@@ -377,9 +338,10 @@ class ADFSAuth:
         print ('Token Expires: {} server time'.format(expiration))
 
         # Now to write that config into file
-        self.save_profile_credentials(profile, aws_access_key_id, aws_secret_key, aws_session_token)
+        self.save_profile_credentials(self.parameters.profile, aws_access_key_id, aws_secret_key, aws_session_token)
     
     def assume_role(self):
+        print("Creating boto3.Session with profile=%s" % self.parameters.profile)
         session = boto3.Session(profile_name=self.parameters.profile)
         sts_client = session.client('sts')
         try:         
@@ -408,12 +370,35 @@ class ADFSAuth:
             'aws_session_token': session_token
         }
         config_folder = home+'/.aws'
-        if not os.path.exists(config_folder):
-            os.makedirs(config_folder)
+        os.makedirs(config_folder, exist_ok=True)
 
         print("Writing file " + filename + " with updated profile [" + profile_name + "]")
         with open(filename, 'w') as configfile:
             aws_credentials.write(configfile)
+
+    def make_sure_profile_exists(self, profile_name):
+        home = os.path.expanduser("~")
+        filename = home + '/.aws/config'
+        print("Reading file " + filename)
+        aws_profiles_data = configparser.ConfigParser()
+        aws_profiles_data.read(filename)
+
+        profile_label = "profile " + profile_name
+        if profile_name == "default":
+            profile_label = "default"
+
+        if profile_label not in aws_profiles_data:
+            print("Profile %s not found. Creating one..." % profile_name)
+            aws_profiles_data[profile_label] = {}
+
+            config_folder = home+'/.aws'
+            os.makedirs(config_folder, exist_ok=True)
+
+            print("Writing file " + filename + " with updated profile [" + profile_name + "]")
+            with open(filename, 'w') as configfile:
+                aws_profiles_data.write(configfile)
+        else:
+            print("Profile %s exists." % profile_name)
 
     def get_plain_text_from_soup(self, soup):
         # remove tags that has JS or CSS
@@ -430,8 +415,8 @@ class ADFSAuth:
         lines = [x[0] for x in groupby(lines)]
 
         # join all lines into single string
-        text = '\n'.join(lines)
-        return text.encode("ascii", errors="replace")
+        text = "\n".join(lines)
+        return text
 
     def debug_write_file(self, filename, content_str):
         if type(content_str) is not str:
@@ -441,6 +426,6 @@ class ADFSAuth:
             with open(filename, "w") as f:
                 f.write(content_str)
 
-if __name__ == "__main__":
-    authentication = ADFSAuth()
 
+def main_func():
+    authentication = ADFSAuth()

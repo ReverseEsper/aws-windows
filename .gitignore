@@ -4,3 +4,4 @@ code/build/
 code/aws_ad.egg-info/
 temp/
 .idea/
+__pycache__/
