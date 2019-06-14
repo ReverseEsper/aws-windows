@@ -23,8 +23,8 @@ from itertools import groupby
 import json
 
 stdout = sys.stdout
-stdout_redirect = open("aws.log", "w")
-stdout_redirect_a = open("aws.log", "a")
+stdout_redirect = None
+stdout_redirect_a = None
 
 
 class GetParams:
@@ -101,6 +101,9 @@ auth file parameters take precedence over environmental variables
         args = parser.parse_args()
 
         if args.output.startswith("stdout_"):
+            global stdout_redirect, stdout_redirect_a
+            stdout_redirect = open("aws.log", "w")
+            stdout_redirect_a = open("aws.log", "a")
             sys.stdout = stdout_redirect
 
         args.password = os.environ.get('AWS_PASSWORD', None)
