@@ -80,23 +80,33 @@ auth file parameters take precedence over environmental variables
                 print("  %s = %s" % (k, v))
 
     def get_arg_parameters(self):
-        # Prepare Command Variables
         parser = configargparse.ArgumentParser(description="Log into AWS using ADFS",
-                                               epilog=self.epilog, formatter_class=RawTextHelpFormatter)
-        parser.add_argument("--username", env_var="AWS_USERNAME",
-                            help="full domain login i.e.: user01@organisation.com")
-        parser.add_argument("--adfs-host", env_var="AWS_ADFS_HOST", help="ADFS login domain i.e.: sts.domain.com")
-        parser.add_argument("--provider-id", env_var="AWS_PROVIDER_ID", help="Provider ID i.e.: urn:amazon:SomeCompany")
-        parser.add_argument("--profile", env_var="AWS_DEFAULT_PROFILE",
-                            help="Profile name. if none 'default' will be picked", default="default")
-        parser.add_argument("--auth-file", help="File with proper credentials", default="~/.aws/auth")
+                                               epilog=self.epilog,
+                                               formatter_class=RawTextHelpFormatter)
+        parser.add_argument("--username", env_var="AWS_USERNAME", help=(
+                "full domain login i.e.: user01@organisation.com"
+            )
+        )
+        parser.add_argument("--adfs-host", env_var="AWS_ADFS_HOST", help=(
+                "ADFS login domain i.e.: sts.domain.com"
+            )
+        )
+        parser.add_argument("--provider-id", env_var="AWS_PROVIDER_ID", help=(
+                "Provider ID i.e.: urn:amazon:SomeCompany"
+            )
+        )
+        parser.add_argument("--profile", env_var="AWS_DEFAULT_PROFILE", default="default",
+                            help="Profile name. if none 'default' will be picked"
+        )
+        parser.add_argument("--auth-file", default="~/.aws/auth", help="File with proper credentials")
         parser.add_argument("--role-arn", env_var="AWS_ROLE_ARN", help="ARN role to assume")
         parser.add_argument("--assume-role", help="After getting login, assumes new role")
         parser.add_argument("--assume-profile", help="Profile for assumed role")
-        parser.add_argument("-v", "--verbose", help="Increase output verbosity", action="count", default=0)
-        parser.add_argument("--output", dest="output", choices=["file", "stdout_json"], default="file",
-                            help="suppress any intermediate output and print out the credentials only ('stdout_' is chosen)."
-                                 "secondary output is redirected to 'aws.log' until the end of the script")
+        parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase output verbosity")
+        parser.add_argument("--output", dest="output", choices=["file", "stdout_json"], default="file", help=(
+            "suppress any intermediate output and print out the credentials only ('stdout_' is chosen)."
+            "intermediate output is redirected to 'aws.log' until the end of the script is reached")
+        )
         # Notice Lack of Password. It is intentional, as I don't see any reason to put password in open file
         args = parser.parse_args()
 
@@ -335,8 +345,11 @@ class ADFSAuth:
         self.make_sure_profile_exists(self.parameters.profile)
 
         # TODO: Implement testing if login suceeded
+        print("Hanging before the client")
         client = boto3.client('sts')
+        print("Hanging on the client")
         try:
+            print("Hanging in the try clause")
             token = client.assume_role_with_saml(
                 RoleArn=self.role_arn,
                 PrincipalArn=self.principial_arn,
