@@ -396,7 +396,8 @@ class ADFSAuth:
         credentials = assumedRoleObject['Credentials']
 
         self.save_profile_credentials(self.parameters.assume_profile, credentials['AccessKeyId'],
-                                      credentials['SecretAccessKey'], credentials['SessionToken'])
+                                      credentials['SecretAccessKey'], credentials['SessionToken'],
+                                      "",None)
 
     def save_profile_credentials(self, profile_name, access_key, secret_access_key, session_token, expiration, output):
 
@@ -481,4 +482,4 @@ class ADFSAuth:
 
 
 def main_func():
-    authentication = ADFSAuth()
+    ADFSAuth()
