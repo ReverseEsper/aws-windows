@@ -397,9 +397,9 @@ class ADFSAuth:
 
         self.save_profile_credentials(self.parameters.assume_profile, credentials['AccessKeyId'],
                                       credentials['SecretAccessKey'], credentials['SessionToken'],
-                                      "",None)
+                                      "")
 
-    def save_profile_credentials(self, profile_name, access_key, secret_access_key, session_token, expiration, output):
+    def save_profile_credentials(self, profile_name, access_key, secret_access_key, session_token, expiration, output=""):
 
         if output == "file":
             home = os.path.expanduser("~")
