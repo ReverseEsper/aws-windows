@@ -18,6 +18,9 @@ randomly refused to work under bamboo
             provider-id=urn:amazon:your-company-provider-id
             role-arn=arn:aws:iam::1234567890:role/ADFS_ROLE_FOR_TASK
             
+            # session duration can be increased to 24 hours (720 minutes)
+            session-duration-minutes=60
+            
             # OPTIONAL variables that change behaviour of profile :
             # assume-role=arn:aws:iam::1234567890:role/role-to-assume-into-after-gettin-in
             # assume-profile=name-of-the-new-profile
