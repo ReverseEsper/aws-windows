@@ -39,6 +39,7 @@ class GetParams:
     role_arn = None
     verbose = 0
     output = None
+    session_duration_minutes = None
 
     assume_profile = None
     assume_role = None
@@ -49,6 +50,7 @@ Auth File Values :
     [profile-name]
     username=login@your-domain.com
     password=your-password
+    session-duration-minutes=720
     adfs-host=sts.your-domain.com
     provider-id=urn:amazon:your-company-provider-id
     role-arn=arn:aws:iam::1234567890:role/ADFS_ROLE_FOR_TASK
@@ -99,6 +101,7 @@ auth file parameters take precedence over environmental variables
                             help="Profile name. if none 'default' will be picked"
         )
         parser.add_argument("--auth-file", default="~/.aws/auth", help="File with proper credentials")
+        parser.add_argument("--session-duration-minutes", env_var="AWS_SESSION_DURATION_MINUTES", type=int, help="Session duration in minutes. Valid values are between 15 and 720.")
         parser.add_argument("--role-arn", env_var="AWS_ROLE_ARN", help="ARN role to assume")
         parser.add_argument("--assume-role", help="After getting login, assumes new role")
         parser.add_argument("--assume-profile", help="Profile for assumed role")
@@ -139,7 +142,7 @@ auth file parameters take precedence over environmental variables
             r = {}
             for key, value in config[self.profile].items():
                 if key in ['username', 'password', 'adfs-host', 'provider-id', 'role-arn', 'assume-role',
-                           'assume-profile']:
+                           'assume-profile', 'session-duration-minutes']:
                     r[key.replace('-', '_')] = value
             return r
         else:
@@ -153,6 +156,7 @@ auth file parameters take precedence over environmental variables
         self.auth_file = cmd_line_args["auth_file"]
         self.profile = cmd_line_args["profile"]
         self.output = cmd_line_args["output"]
+        self.session_duration_minutes = cmd_line_args["session_duration_minutes"]
 
         auth_file_args = self.get_auth_file_parameters()
 
@@ -345,16 +349,16 @@ class ADFSAuth:
         self.make_sure_profile_exists(self.parameters.profile)
 
         # TODO: Implement testing if login suceeded
-        print("Hanging before the client")
+        # print("Hanging before the client")
         client = boto3.client('sts')
-        print("Hanging on the client")
+        # print("Hanging on the client")
         try:
-            print("Hanging in the try clause")
+            # print("Hanging in the try clause")
             token = client.assume_role_with_saml(
                 RoleArn=self.role_arn,
                 PrincipalArn=self.principial_arn,
                 SAMLAssertion=self.SAMLResponse,
-                DurationSeconds=3600
+                DurationSeconds=int(self.parameters.session_duration_minutes) * 60 if self.parameters.session_duration_minutes else 3600
             )
         except botocore.exceptions.ClientError as err:
             print("[Error] There is a problem with assigned role:")
@@ -385,7 +389,8 @@ class ADFSAuth:
         try:
             assumedRoleObject = sts_client.assume_role(
                 RoleArn=self.parameters.assume_role,
-                RoleSessionName=self.parameters.assume_profile
+                RoleSessionName=self.parameters.assume_profile,
+                DurationSeconds=int(self.parameters.session_duration_minutes) * 60 if self.parameters.session_duration_minutes else 3600
             )
         except botocore.exceptions.ClientError as err:
             print("[Error] There is a problem with assuming role:")
