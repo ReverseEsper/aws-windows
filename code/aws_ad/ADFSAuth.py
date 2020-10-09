@@ -245,7 +245,7 @@ class ADFSAuth:
         if response.status_code != 200:
             raise Exception("Welcome page status_code = " + response.status_code)
 
-        soup = BeautifulSoup(response.text, features="lxml")
+        soup = BeautifulSoup(response.text, features="html.parser")
 
         form_element = soup.find('form', id='loginForm')
         if form_element is None:
@@ -284,7 +284,7 @@ class ADFSAuth:
         response = requests.request("POST", url2, headers=headers, data=form, cookies=welcome_page_result.cookies)
         self.debug_write_file("submit_credentials.html", response.text)
 
-        soup = BeautifulSoup(response.text, features="lxml")
+        soup = BeautifulSoup(response.text, features="html.parser")
 
         if response.status_code != 200:
             print(self.get_plain_text_from_soup(soup))
@@ -315,7 +315,7 @@ class ADFSAuth:
 
     def pick_role(self):
         SAMLResponse_decoded = base64.b64decode(self.SAMLResponse)
-        soup = BeautifulSoup(SAMLResponse_decoded, features='lxml')
+        soup = BeautifulSoup(SAMLResponse_decoded, features='html.parser')
         roles_html = soup.find("attribute", attrs={'name': "https://aws.amazon.com/SAML/Attributes/Role"})
         self.debug_write_file("SAMLResponse_decoded.xml", str(SAMLResponse_decoded, 'UTF-8'))
 
