@@ -402,7 +402,7 @@ class ADFSAuth:
 
         self.save_profile_credentials(self.parameters.assume_profile, credentials['AccessKeyId'],
                                       credentials['SecretAccessKey'], credentials['SessionToken'],
-                                      "",None)
+                                      "",self.parameters.output)
 
     def save_profile_credentials(self, profile_name, access_key, secret_access_key, session_token, expiration, output):
 
