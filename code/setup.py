@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="aws-ad",
-    version="0.6.4",
+    version="0.6.5",
     entry_points={
         "console_scripts": [
             "aws-ad = aws_ad.ADFSAuth:main_func"
